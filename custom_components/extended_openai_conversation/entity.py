@@ -575,6 +575,9 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
                 raise FunctionNotFound(tool_input.tool_name)
             try:
                 tool_result = await llm_api.async_call_tool(tool_input)
+                # Home Assistant 2026.10+ wraps tool output in llm.ToolResult
+                if hasattr(tool_result, "data"):
+                    tool_result = tool_result.data
             except intent.MatchFailedError as err:
                 _LOGGER.warning(
                     "LLM API tool '%s' failed: %s", tool_input.tool_name, err
@@ -585,11 +588,11 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
                     "LLM API tool '%s' failed: %s", tool_input.tool_name, err
                 )
                 tool_result = {"error": str(err)}
-            return conversation.ToolResultContent(
+            return _make_tool_result_content(
                 agent_id=self.entity_id,
                 tool_call_id=tool_input.id,
                 tool_name=tool_input.tool_name,
-                tool_result={
+                data={
                     "result": json.dumps(tool_result)
                     if isinstance(tool_result, dict)
                     else str(tool_result)
