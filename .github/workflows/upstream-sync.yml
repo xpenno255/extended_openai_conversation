@@ -1,0 +1,91 @@
+name: upstream-sync
+
+# Weekly: try merging the newest upstream release into `homelab`.
+# Clean merge -> branch `sync/<tag>` + PR (CI is dispatched on it).
+# Conflict -> issue listing the conflicted files.
+# Also flags when upstream PR #446 (the LLM API feature we carry) changes or is merged.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+env:
+  UPSTREAM: jekalmin/extended_openai_conversation
+  CARRIED_PR: "446"
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: homelab
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/$UPSTREAM.git"
+          git fetch --tags upstream
+          git fetch upstream "pull/$CARRIED_PR/head:carried-pr"
+
+      - name: Open issue once
+        run: |
+          cat > /tmp/issue.sh <<'EOF'
+          title="$1"; body="$2"
+          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')" ]; then
+            gh issue create --title "$title" --body "$body"
+          fi
+          EOF
+          chmod +x /tmp/issue.sh
+
+      - name: Check carried PR
+        run: |
+          state=$(gh pr view "$CARRIED_PR" -R "$UPSTREAM" --json state --jq .state)
+          if [ "$state" = "MERGED" ]; then
+            /tmp/issue.sh "Upstream PR #$CARRIED_PR merged" \
+              "https://github.com/$UPSTREAM/pull/$CARRIED_PR is merged. Once a release includes it, the fork's copy of it can be dropped."
+          elif ! git merge-base --is-ancestor carried-pr HEAD; then
+            sha=$(git rev-parse --short carried-pr)
+            /tmp/issue.sh "Upstream PR #$CARRIED_PR updated ($sha)" \
+              "https://github.com/$UPSTREAM/pull/$CARRIED_PR has new commits not in \`homelab\`. Review and merge \`$sha\` if wanted."
+          fi
+
+      - name: Merge latest upstream release
+        run: |
+          tag=$(gh release list -R "$UPSTREAM" --limit 1 --json tagName --jq '.[0].tagName')
+          echo "Latest upstream release: $tag"
+          if git merge-base --is-ancestor "$tag" HEAD; then
+            echo "Already up to date."; exit 0
+          fi
+          branch="sync/$tag"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists; waiting on its PR."; exit 0
+          fi
+          git switch -c "$branch"
+          if git merge --no-ff --no-edit "$tag" -m "Merge upstream $tag into homelab"; then
+            git push origin "$branch"
+            gh pr create --base homelab --head "$branch" \
+              --title "Merge upstream $tag" \
+              --body "Clean merge of upstream [$tag](https://github.com/$UPSTREAM/releases/tag/$tag). CI (incl. \`tests/test_homelab_llm_api.py\`) runs on this branch; merge only if it passes."
+            gh workflow run ci.yml --ref "$branch"
+            gh workflow run hacs.yaml --ref "$branch" || true
+          else
+            files=$(git diff --name-only --diff-filter=U | sed 's/^/- /')
+            git merge --abort
+            /tmp/issue.sh "Upstream $tag conflicts with homelab" \
+              "Merging upstream [$tag](https://github.com/$UPSTREAM/releases/tag/$tag) into \`homelab\` conflicts in:
+
+          $files
+
+          Resolve locally: \`git fetch upstream --tags && git merge $tag\` on \`homelab\`, keep the fork changes listed in FORK.md, push."
+          fi
