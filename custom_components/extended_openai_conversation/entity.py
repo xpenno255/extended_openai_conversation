@@ -16,7 +16,14 @@ from openai.types.chat import (
 )
 import orjson
 import voluptuous as vol
-from voluptuous_openapi import convert
+
+try:
+    # HA core >= 2026.9 replaced voluptuous_openapi with probatio, and
+    # llm.selector_serializer now returns probatio's UNSUPPORTED sentinel —
+    # voluptuous_openapi.convert doesn't recognise it and mangles every schema.
+    from probatio import to_openapi as convert
+except ImportError:  # HA core <= 2026.8
+    from voluptuous_openapi import convert
 import yaml
 
 from homeassistant.components import conversation
@@ -112,6 +119,9 @@ def _shorten_tool_call_id(tool_call_id: str) -> str:
 
 def _is_nullable(prop_schema: dict[str, Any]) -> bool:
     """Check if a property schema accepts null."""
+    if not isinstance(prop_schema, dict):
+        # voluptuous_openapi emits _Unsupported markers for schemas it cannot convert
+        return False
     prop_type = prop_schema.get("type")
     if isinstance(prop_type, list):
         return "null" in prop_type
@@ -124,6 +134,8 @@ def _make_nullable_optional(schema: dict[str, Any]) -> None:
     Keeps 'name' required since it's semantically required by HA's Assist API
     even though it's typed as nullable.
     """
+    if not isinstance(schema, dict):
+        return
     if schema.get("type") != "object" or "properties" not in schema:
         return
     required = schema.get("required", [])
@@ -140,6 +152,9 @@ def _make_nullable_optional(schema: dict[str, Any]) -> None:
 
 def _adjust_schema(schema: dict[str, Any]) -> None:
     """Adjust the schema to be compatible with OpenAI API."""
+    if not isinstance(schema, dict):
+        # voluptuous_openapi emits _Unsupported markers for schemas it cannot convert
+        return
     schema_type = schema.get("type")
 
     if schema_type == "object":
@@ -153,6 +168,8 @@ def _adjust_schema(schema: dict[str, Any]) -> None:
 
         # Ensure all properties are required
         for prop, prop_info in schema["properties"].items():
+            if not isinstance(prop_info, dict):
+                continue
             _adjust_schema(prop_info)
             if prop not in schema["required"]:
                 prop_info.setdefault("type", "string")
@@ -713,6 +730,15 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
                 tool.parameters,
                 custom_serializer=llm_api.custom_serializer or llm.selector_serializer,
             )
+            if not isinstance(schema, dict):
+                _LOGGER.warning(
+                    "Tool %s (api %s) has parameters voluptuous_openapi cannot convert"
+                    " (%r); exposing it with a permissive empty schema",
+                    tool.name,
+                    llm_api.api.id,
+                    schema,
+                )
+                schema = {"type": "object", "properties": {}, "required": []}
             _adjust_schema(schema)
             # Make nullable params optional for the LLM
             _make_nullable_optional(schema)
