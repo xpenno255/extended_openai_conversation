@@ -38,7 +38,7 @@ jobs:
           git fetch --tags upstream
           git fetch upstream "pull/$CARRIED_PR/head:carried-pr"
 
-      - name: Open issue once
+      - name: Issue helper (skips duplicates)
         run: |
           cat > /tmp/issue.sh <<'EOF'
           title="$1"; body="$2"
