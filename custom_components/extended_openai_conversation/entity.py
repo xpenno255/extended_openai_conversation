@@ -23,7 +23,7 @@ try:
     # voluptuous_openapi.convert doesn't recognise it and mangles every schema.
     from probatio import to_openapi as convert
 except ImportError:  # HA core <= 2026.8
-    from voluptuous_openapi import convert
+    from voluptuous_openapi import convert  # type: ignore[no-redef]
 import yaml
 
 from homeassistant.components import conversation
@@ -590,6 +590,7 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
             llm_api = chat_log.llm_api
             if llm_api is None:
                 raise FunctionNotFound(tool_input.tool_name)
+            tool_result: Any
             try:
                 tool_result = await llm_api.async_call_tool(tool_input)
                 # Home Assistant 2026.10+ wraps tool output in llm.ToolResult
