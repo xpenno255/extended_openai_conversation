@@ -62,8 +62,13 @@ jobs:
 
       - name: Merge latest upstream release
         run: |
-          tag=$(gh release list -R "$UPSTREAM" --limit 1 --json tagName --jq '.[0].tagName')
-          echo "Latest upstream release: $tag"
+          # Newest release on the line homelab is built on (skips e.g. 2.x patches when we're on 3.x).
+          base=$(git describe --tags --abbrev=0 HEAD)
+          tag="$base"
+          for t in $(gh release list -R "$UPSTREAM" --limit 20 --json tagName --jq '.[].tagName'); do
+            if git merge-base --is-ancestor "$base" "$t"; then tag="$t"; break; fi
+          done
+          echo "Base: $base; latest upstream release on this line: $tag"
           if git merge-base --is-ancestor "$tag" HEAD; then
             echo "Already up to date."; exit 0
           fi

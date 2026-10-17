@@ -22,7 +22,7 @@ Guarded by `tests/test_homelab_llm_api.py`.
 
 `.github/workflows/upstream-sync.yml` runs weekly (Mon 06:17 UTC, or by hand):
 
-- newest upstream release merges cleanly → branch `sync/<tag>`, a PR into `homelab`, CI dispatched on it;
+- newest upstream release on the line `homelab` is built on (e.g. 3.x, ignoring 2.x patches) merges cleanly → branch `sync/<tag>`, a PR into `homelab`, CI dispatched on it;
 - merge conflicts → an issue listing the files;
 - PR #446 gets new commits or is merged → an issue.
 
