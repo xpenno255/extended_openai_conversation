@@ -16,7 +16,14 @@ model through Home Assistant's LLM API.
    helpers skip non-dict fragments; a tool whose parameters can't be converted gets an empty
    schema instead of breaking every request.
 
-Guarded by `tests/test_homelab_llm_api.py`.
+4. **Voice turns always end in something sayable** (2026-11-13). The turn has a `TURN_TIMEOUT`
+   (10 s, `const.py`); a timeout, `TokenLengthExceededError` or `ParseArgumentsFailed` answers
+   `FALLBACK_SPEECH` ("Sorry, I got stuck on that…"), an `OpenAIError` and any other
+   `HomeAssistantError` a short apology. The exception text goes to the log, not the speaker
+   (upstream speaks "Something went wrong: token length(`2048`) exceeded…"). A length stop logs how
+   much hidden reasoning (`reasoning_content`, vLLM reasoning parsers) and text it produced.
+
+Guarded by `tests/test_homelab_llm_api.py` and `tests/test_homelab_voice_fallback.py`.
 
 ## Staying current
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Literal
@@ -34,8 +35,13 @@ from .const import (
     DEFAULT_WORKING_DIRECTORY,
     DOMAIN,
     EVENT_CONVERSATION_FINISHED,
+    FALLBACK_ERROR_SPEECH,
+    FALLBACK_SPEECH,
+    FALLBACK_UNREACHABLE_SPEECH,
+    TURN_TIMEOUT,
 )
 from .entity import ExtendedOpenAIBaseLLMEntity
+from .exceptions import ParseArgumentsFailed, TokenLengthExceededError
 from .helpers import get_exposed_entities
 from .skills import Skill, SkillManager
 
@@ -188,32 +194,29 @@ class ExtendedOpenAIAgentEntity(
         # Call the LLM
 
         try:
-            await self._async_handle_chat_log(
-                chat_log,
-                function_tools=function_tools,
-                exposed_entities=exposed_entities,
-                llm_context=llm_context,
+            async with asyncio.timeout(TURN_TIMEOUT):
+                await self._async_handle_chat_log(
+                    chat_log,
+                    function_tools=function_tools,
+                    exposed_entities=exposed_entities,
+                    llm_context=llm_context,
+                )
+        except TimeoutError:
+            _LOGGER.warning(
+                "No answer within %ss for %r; replying with the fallback",
+                TURN_TIMEOUT,
+                user_input.text,
             )
+            return _error_result(user_input, FALLBACK_SPEECH)
+        except (TokenLengthExceededError, ParseArgumentsFailed) as err:
+            _LOGGER.warning("No usable answer for %r: %s", user_input.text, err)
+            return _error_result(user_input, FALLBACK_SPEECH)
         except OpenAIError as err:
-            _LOGGER.error(err)
-            intent_response = intent.IntentResponse(language=user_input.language)
-            intent_response.async_set_error(
-                intent.IntentResponseErrorCode.UNKNOWN,
-                f"Sorry, I had a problem talking to OpenAI: {err}",
-            )
-            return conversation.ConversationResult(
-                response=intent_response, conversation_id=user_input.conversation_id
-            )
+            _LOGGER.error("Language model request failed: %s", err)
+            return _error_result(user_input, FALLBACK_UNREACHABLE_SPEECH)
         except HomeAssistantError as err:
             _LOGGER.error("Error during conversation: %s", err, exc_info=True)
-            intent_response = intent.IntentResponse(language=user_input.language)
-            intent_response.async_set_error(
-                intent.IntentResponseErrorCode.UNKNOWN,
-                f"Something went wrong: {err}",
-            )
-            return conversation.ConversationResult(
-                response=intent_response, conversation_id=user_input.conversation_id
-            )
+            return _error_result(user_input, FALLBACK_ERROR_SPEECH)
 
         # Fire conversation finished event
         self.hass.bus.async_fire(
@@ -272,3 +275,14 @@ class ExtendedOpenAIAgentEntity(
 
     def _get_exposed_entities(self) -> list[dict[str, Any]]:
         return get_exposed_entities(self.hass)
+
+
+def _error_result(
+    user_input: ConversationInput, speech: str
+) -> conversation.ConversationResult:
+    """A spoken, user-facing error; the technical detail stays in the log."""
+    intent_response = intent.IntentResponse(language=user_input.language)
+    intent_response.async_set_error(intent.IntentResponseErrorCode.UNKNOWN, speech)
+    return conversation.ConversationResult(
+        response=intent_response, conversation_id=user_input.conversation_id
+    )

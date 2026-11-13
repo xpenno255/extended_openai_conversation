@@ -95,6 +95,12 @@ CONF_TEMPERATURE = "temperature"
 DEFAULT_TEMPERATURE = 0.5
 CONF_MAX_FUNCTION_CALLS_PER_CONVERSATION = "max_function_calls_per_conversation"
 DEFAULT_MAX_FUNCTION_CALLS_PER_CONVERSATION = 10
+# Homelab: a voice turn must answer. Longer than this (a runaway model, a stuck tool) and the user
+# hears FALLBACK_SPEECH instead of waiting; error details go to the log, never to the speaker.
+TURN_TIMEOUT = 10
+FALLBACK_SPEECH = "Sorry, I got stuck on that. Could you say it another way?"
+FALLBACK_ERROR_SPEECH = "Sorry, something went wrong with that. Please try again."
+FALLBACK_UNREACHABLE_SPEECH = "Sorry, I can't reach the language model just now."
 CONF_SHORTEN_TOOL_CALL_ID = "shorten_tool_call_id"
 DEFAULT_SHORTEN_TOOL_CALL_ID = False
 CONF_FUNCTION_TOOLS = "functions"
