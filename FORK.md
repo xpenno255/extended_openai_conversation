@@ -23,6 +23,12 @@ model through Home Assistant's LLM API.
    (upstream speaks "Something went wrong: token length(`2048`) exceeded…"). A length stop logs how
    much hidden reasoning (`reasoning_content`, vLLM reasoning parsers) and text it produced.
 
+5. **Quiet CI** (2026-11-13). GitHub paused this fork's workflows on 2026-10-23 ("due to the scale
+   of GitHub Actions usage"); `ci` and `hacs` had run nightly, and `ci` failed every night on HA dev.
+   No nightly schedules now; `hacs` runs on `homelab` pushes, PRs and by hand; Type Check and
+   Test (HA dev) are advisory (`continue-on-error`). Re-enable paused workflows on the repo's
+   Actions tab ("A repository maintainer can choose to re-enable these"); there is no API for it.
+
 Guarded by `tests/test_homelab_llm_api.py` and `tests/test_homelab_voice_fallback.py`.
 
 ## Staying current
