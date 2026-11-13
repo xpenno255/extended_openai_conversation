@@ -451,6 +451,10 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
         """Transform OpenAI stream to Home Assistant format."""
         current_tool_calls: dict[int, dict[str, Any]] = {}
         first_chunk = True
+        # Homelab: reasoning text (vLLM reasoning parsers) is never shown or spoken; count it so a
+        # length stop says where the tokens went.
+        reasoning_chars = 0
+        content_chars = 0
 
         async for chunk in result:
             _LOGGER.debug("Received chunk: %s", chunk)
@@ -479,6 +483,11 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
 
             choice = chunk.choices[0]
             delta = choice.delta
+            reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                delta, "reasoning", None
+            )
+            if isinstance(reasoning, str):
+                reasoning_chars += len(reasoning)
 
             if delta.content:
                 # Ensure content is a string (Mistral might return unexpected types)
@@ -491,6 +500,7 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
                     )
                     content_value = str(content_value) if content_value else ""
                 if content_value:
+                    content_chars += len(content_value)
                     yield {"content": content_value}
 
             if delta.tool_calls:
@@ -534,6 +544,13 @@ class ExtendedOpenAIBaseLLMEntity(Entity):
                     yield {"tool_calls": tool_calls_list}
                 current_tool_calls.clear()
             if choice.finish_reason == "length":
+                _LOGGER.warning(
+                    "Model hit max_tokens after %d chars of hidden reasoning, %d chars of text"
+                    " and %d pending tool call(s)",
+                    reasoning_chars,
+                    content_chars,
+                    len(current_tool_calls),
+                )
                 raise TokenLengthExceededError(
                     self.subentry.data.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS)
                 )
