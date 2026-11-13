@@ -22,6 +22,9 @@ model through Home Assistant's LLM API.
    `HomeAssistantError` a short apology. The exception text goes to the log, not the speaker
    (upstream speaks "Something went wrong: token length(`2048`) exceeded…"). A length stop logs how
    much hidden reasoning (`reasoning_content`, vLLM reasoning parsers) and text it produced.
+   A turn that ends with no text is not silent either: after a failed tool call it says
+   `FALLBACK_SPEECH`, after a successful one "OK." (2026-11-13: a model retried a rejected tool call
+   to the function-call limit and the Echo said nothing).
 
 5. **Quiet CI** (2026-11-13). GitHub paused this fork's workflows on 2026-10-23 ("due to the scale
    of GitHub Actions usage"); `ci` and `hacs` had run nightly, and `ci` failed every night on HA dev.

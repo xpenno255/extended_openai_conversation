@@ -101,6 +101,7 @@ TURN_TIMEOUT = 10
 FALLBACK_SPEECH = "Sorry, I got stuck on that. Could you say it another way?"
 FALLBACK_ERROR_SPEECH = "Sorry, something went wrong with that. Please try again."
 FALLBACK_UNREACHABLE_SPEECH = "Sorry, I can't reach the language model just now."
+SILENT_SUCCESS_SPEECH = "OK."
 CONF_SHORTEN_TOOL_CALL_ID = "shorten_tool_call_id"
 DEFAULT_SHORTEN_TOOL_CALL_ID = False
 CONF_FUNCTION_TOOLS = "functions"

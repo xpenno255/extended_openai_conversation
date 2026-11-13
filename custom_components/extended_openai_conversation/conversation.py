@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any, Literal
@@ -38,9 +39,10 @@ from .const import (
     FALLBACK_ERROR_SPEECH,
     FALLBACK_SPEECH,
     FALLBACK_UNREACHABLE_SPEECH,
+    SILENT_SUCCESS_SPEECH,
     TURN_TIMEOUT,
 )
-from .entity import ExtendedOpenAIBaseLLMEntity
+from .entity import ExtendedOpenAIBaseLLMEntity, _tool_result_data
 from .exceptions import ParseArgumentsFailed, TokenLengthExceededError
 from .helpers import get_exposed_entities
 from .skills import Skill, SkillManager
@@ -233,10 +235,13 @@ class ExtendedOpenAIAgentEntity(
 
         # Get last assistant message
         last_content = chat_log.content[-1]
+        speech = ""
         if isinstance(last_content, conversation.AssistantContent):
-            intent_response.async_set_speech(last_content.content or "")
-        else:
-            intent_response.async_set_speech("")
+            speech = last_content.content or ""
+        if not speech.strip():
+            # Homelab: never answer a voice turn with silence.
+            speech = _empty_reply_speech(chat_log, user_input.text)
+        intent_response.async_set_speech(speech)
 
         return ConversationResult(
             response=intent_response,
@@ -286,3 +291,38 @@ def _error_result(
     return conversation.ConversationResult(
         response=intent_response, conversation_id=user_input.conversation_id
     )
+
+
+def _tool_failed(content: conversation.ToolResultContent) -> bool:
+    """Whether a tool result reports an error (tools answer {"error": ...})."""
+    data = _tool_result_data(content)
+    if isinstance(data, dict) and isinstance(data.get("result"), str):
+        try:
+            data = json.loads(data["result"])
+        except ValueError:
+            return False
+    return isinstance(data, dict) and "error" in data
+
+
+def _empty_reply_speech(chat_log: ChatLog, text: str) -> str:
+    """What to say when the model ends a turn without text.
+
+    After a failed tool call (often the same call retried until the function-call limit) the user
+    hears FALLBACK_SPEECH; after a successful one, a plain acknowledgement, so a done action is
+    never reported as a failure.
+    """
+    results: list[conversation.ToolResultContent] = []
+    for content in reversed(chat_log.content):
+        if isinstance(content, conversation.UserContent):
+            break
+        if isinstance(content, conversation.ToolResultContent):
+            results.append(content)
+    failed = not results or _tool_failed(results[0])
+    _LOGGER.warning(
+        "Empty reply to %r after %d tool result(s), last %s; answering %s",
+        text,
+        len(results),
+        "failed" if failed else "succeeded",
+        "with the fallback" if failed else "OK",
+    )
+    return FALLBACK_SPEECH if failed else SILENT_SUCCESS_SPEECH

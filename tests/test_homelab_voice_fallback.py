@@ -109,3 +109,36 @@ async def test_length_stop_logs_hidden_reasoning(caplog) -> None:
     else:
         raise AssertionError("length stop must still raise")
     assert "after 454 chars of hidden reasoning, 0 chars of text" in caplog.text
+
+
+def _turn(*results):
+    from custom_components.extended_openai_conversation.entity import (
+        _make_tool_result_content,
+    )
+    from homeassistant.components import conversation as ha_conversation
+
+    content = [ha_conversation.UserContent(content="Stop the timer.")]
+    for i, data in enumerate(results):
+        content.append(
+            _make_tool_result_content(
+                "conversation.x", f"c{i}", "echo_timer", {"result": data}
+            )
+        )
+    content.append(
+        ha_conversation.AssistantContent(agent_id="conversation.x", content="")
+    )
+    return SimpleNamespace(content=content)
+
+
+def test_empty_reply_after_a_failed_tool_is_the_fallback(caplog) -> None:
+    from custom_components.extended_openai_conversation.const import (
+        SILENT_SUCCESS_SPEECH,
+    )
+
+    caplog.set_level(logging.WARNING)
+    error = '{"error": "Invalid arguments: expected str", "retryable": false}'
+    assert conv._empty_reply_speech(_turn(error, error), "x") == FALLBACK_SPEECH
+    assert "last failed" in caplog.text
+    ok = '{"status": "completed", "timers": []}'
+    assert conv._empty_reply_speech(_turn(error, ok), "x") == SILENT_SUCCESS_SPEECH
+    assert conv._empty_reply_speech(_turn(), "x") == FALLBACK_SPEECH
