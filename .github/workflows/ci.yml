@@ -8,8 +8,8 @@ on:
       - main
       - develop
       - homelab
-  schedule:
-    - cron: "0 0 * * *"
+  # Homelab: no nightly schedule. GitHub paused this fork's workflows on 2026-10-23 "due to the
+  # scale of GitHub Actions usage"; CI runs on push, PRs and the weekly upstream-sync instead.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -111,6 +111,9 @@ jobs:
     name: Type Check
     runs-on: ubuntu-latest
     needs: prepare
+    # Homelab: typed against HA core dev (probatio, httpx2), which upstream code does not follow
+    # yet. Advisory only; Lint and Test (HA stable) are the gate.
+    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -142,6 +145,8 @@ jobs:
     name: Test (HA ${{ matrix.home-assistant }})
     runs-on: ubuntu-latest
     needs: prepare
+    # Homelab: HA dev is an early warning, not a gate (it has failed since 2026-10 on httpx aliasing).
+    continue-on-error: ${{ matrix.home-assistant == 'dev' }}
     strategy:
       fail-fast: false
       matrix:

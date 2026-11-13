@@ -1,10 +1,12 @@
 name: hacs
 
 on:
+  # Homelab: homelab pushes and PRs only, no nightly schedule (see ci.yml).
   push:
+    branches:
+      - homelab
   pull_request:
-  schedule:
-    - cron: "0 0 * * *"
+  workflow_dispatch:
 
 jobs:
   validate:
